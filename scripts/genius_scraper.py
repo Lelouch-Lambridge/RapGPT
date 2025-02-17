@@ -39,7 +39,7 @@ error_logger.addHandler(error_handler)
 SPINNER_FRAMES = cycle(["⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"])
 SPINNER_RUNNING = True
 
-DB_FILE = "datasets.db"
+DB_FILE = "lyrics.db"
 
 def get_db_connection():
   """Returns a database connection."""
@@ -174,6 +174,8 @@ def main(artist_name, max_songs=None, include_features=True):
   if not artist_id: return
 
   init_artist_table(redirected_name)
+  sys.stdout.write(f"\rFetching Lyrics for {redirected_name}...    \n")
+  sys.stdout.flush()
 
   global SPINNER_RUNNING
   SPINNER_RUNNING = True

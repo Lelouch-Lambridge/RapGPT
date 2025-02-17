@@ -1,39 +1,41 @@
-# **RapGPT Lyrics Generator - Fine-Tuning StableLM**
+# **RapGPT - AI-Powered Rap Lyrics Generator**
 
 ## **📌 Project Overview**
 
-This project fine-tunes **StableLM** by Stability AI to generate rap lyrics in the style of different artists. The model is trained using **Low-Rank Adaptation (LoRA)** for efficient fine-tuning.
+RapGPT is a fine-tuned **StableLM** model designed to generate rap lyrics in the style of various artists. The project scrapes lyrics from **Genius**, tokenizes the data, fine-tunes the model using **LoRA (Low-Rank Adaptation)**, and generates rap lyrics based on prompts.
 
-## **📁 Directory Structure**
+## **📁 Project Structure**
 
 ```
-rap_lyrics_generator/
+RapGPT/
 │── logs/
-│   ├── error.log/
-│   ├── info.log/
+│   ├── error.log  # Error logs
+│   ├── info.log   # Information logs
 │
 │── models/
-│   ├── stablelm_base/   # Pretrained model (downloaded)
+│   ├── stablelm_base/  # Pretrained model (downloaded)
+│   ├── fine_tuned_artist/  # Fine-tuned models for specific artists
 │
 │── scripts/
 │   ├── download_model.py  # Downloads StableLM
-│   ├── prep_dataset.py  # Loads and tokenizes lyrics
-│   ├── fine_tune.py  # Fine-tunes StableLM
-│   ├── lyrics_gen.py  # Generates lyrics
-│   ├── genius_scraper.py  # Scrape Lyrics from the genius.com
+│   ├── prep_dataset.py  # Tokenizes and prepares dataset
+│   ├── fine_tune.py  # Fine-tunes StableLM with artist data
+│   ├── lyrics_gen.py  # Generates rap lyrics from the trained model
+│   ├── genius_scraper.py  # Scrapes lyrics from Genius.com and saves them
 │
-│── datasets.db
-│── logs/  # Training logs
-│── output/  # Generated lyrics
-│── requirements.txt
-│── README.md
+│── lyrics.db  # Database storing raw scraped lyrics
+│── tokenized_lyrics.db  # Database storing tokenized lyrics
+│── output/  # Generated lyrics output folder
+│── requirements.txt  # Python dependencies
+│── Makefile  # Automates tasks
+│── README.md  # Project documentation
 ```
 
 ## **🚀 Setup Instructions**
 
 ### **1️⃣ Install Dependencies**
 
-Run the following command to install required Python packages:
+Ensure Python 3.8+ is installed, then run:
 
 ```bash
 pip install -r requirements.txt
@@ -44,51 +46,67 @@ pip install -r requirements.txt
 Before fine-tuning, download the base model:
 
 ```bash
-python scripts/1_download_model.py
+python scripts/download_model.py
 ```
 
 This will save StableLM to `models/stablelm_base/`.
 
-### **3️⃣ Prepare Dataset**
+### **3️⃣ Scrape Rap Lyrics**
 
-Ensure rap lyrics for different artists are inside `datasets/`. Then, run:
+To scrape lyrics from Genius:
 
 ```bash
-python scripts/2_prepare_dataset.py
+python scripts/genius_scraper.py
 ```
 
-This will tokenize and save the dataset to `datasets/tokenized/`.
+This stores the lyrics in `lyrics.db`.
 
-### **4️⃣ Fine-Tune the Model**
+### **4️⃣ Prepare Dataset**
 
-Fine-tune StableLM on an artist's lyrics (e.g., Tupac):
+Tokenize the lyrics before training:
 
 ```bash
-python scripts/3_finetune_stablelm.py
+python scripts/prep_dataset.py
 ```
 
-The fine-tuned model will be saved in `models/stablelm_rap_tupac/`.
+This saves the tokenized dataset to `tokenized_lyrics.db`.
 
-### **5️⃣ Generate Lyrics**
+### **5️⃣ Fine-Tune the Model**
 
-To generate new rap lyrics:
+Fine-tune StableLM using an artist's lyrics:
 
 ```bash
-python scripts/4_generate_lyrics.py
+python scripts/fine_tune.py
+```
+
+The fine-tuned model will be saved under `models/fine_tuned_artist/`.
+
+### **6️⃣ Generate Lyrics**
+
+To generate new rap lyrics based on a prompt:
+
+```bash
+python scripts/lyrics_gen.py
 ```
 
 Lyrics will be saved in `output/generated_lyrics.txt`.
 
+## **🛠 Using the Makefile (Optional)**
+
+For convenience, you can automate tasks using `Makefile`:
+
+```bash
+make download_model   # Download StableLM
+make scrape_lyrics    # Scrape lyrics
+make prep_data        # Tokenize lyrics
+make fine_tune        # Fine-tune model
+make generate_lyrics  # Generate lyrics
+```
+
 ## **🎯 Customization**
 
-- **Fine-tune multiple artists** by modifying `3_finetune_stablelm.py`.
-- **Adjust lyric generation parameters** (temperature, top-k, top-p) in `4_generate_lyrics.py`.
+- **Fine-tune multiple artists** by modifying `fine_tune.py`.
+- **Adjust lyric generation parameters** (temperature, top-k, top-p) in `lyrics_gen.py`.
 - **Deploy a web app** using `Gradio` or `Streamlit`.
-
-## **📌 Next Steps**
-
-✅ Add multi-artist fine-tuning
-✅ Create an interactive web app
-✅ Deploy model via API
 
 **Enjoy generating AI-powered rap lyrics! 🎤🔥**
