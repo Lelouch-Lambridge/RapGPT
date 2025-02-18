@@ -22,10 +22,13 @@ with open("Genius_Api_Token", "r", encoding="utf-8") as token_file:
 logger = Logger()
 
 def load_tokenizer():
-  return AutoTokenizer.from_pretrained(MODEL_NAME)
+  global tokenizer
+  tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+tokenizer = None
+load_tokenizer()
 
 def tokenize_lyrics(lyrics, queue):
-  tokenizer = load_tokenizer()
   tokenized_data = tokenizer([lyrics], truncation=True, padding="max_length", max_length=256)
   queue.put(tokenized_data)
 

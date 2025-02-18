@@ -2,52 +2,28 @@ import os
 import sqlite3
 import sys
 import time
-import threading
 from itertools import cycle
 from datasets import Dataset
 from transformers import AutoTokenizer
+from spinner import Spinner
 
 MODEL_NAME = "models/stablelm_base"
 DB_FILE = "lyrics.db"
 TOKENIZED_DB_FILE = "tokenized_lyrics.db"
 
-SPINNER_FRAMES = cycle(["⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇"])
-SPINNER_RUNNING = True
-
 # Load tokenizer
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-def spinner():
-  """Display a rotating spinner while processing data."""
-  while SPINNER_RUNNING:
-    sys.stdout.write(f"\rProcessing... {next(SPINNER_FRAMES)} ")
-    sys.stdout.flush()
-    time.sleep(0.1)
+def list_tables(cursor):
+  """Fetch all table names efficiently."""
+  return [name[0] for name in cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
 
-def list_tables():
-  """Lists available tables in the database."""
-  conn = sqlite3.connect(DB_FILE)
-  cursor = conn.cursor()
-  cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-  tables = [table[0] for table in cursor.fetchall()]
-  conn.close()
-  return tables
+def get_lyrics_from_db(cursor, table_name):
+  """Retrieve all lyrics in one query to reduce Python loops."""
+  return cursor.execute(f"SELECT lyrics FROM {table_name}").fetchall()
 
-def get_lyrics_from_db(table_name):
-  """Extracts lyrics from the selected table in the database."""
-  conn = sqlite3.connect(DB_FILE)
-  cursor = conn.cursor()
-  cursor.execute(f"SELECT lyrics FROM {table_name}")
-  lyrics = [row[0] for row in cursor.fetchall()]
-  conn.close()
-  return [{"text": lyric} for lyric in lyrics]
-
-def save_tokenized_to_db(table_name, tokenized_data):
-  """Saves tokenized lyrics to a new database."""
-  conn = sqlite3.connect(TOKENIZED_DB_FILE)
-  cursor = conn.cursor()
-
-  # Create table if not exists
+def save_tokenized_to_db(cursor, table_name, tokenized_data, connection):
+  """Bulk insert tokenized lyrics into the database."""
   cursor.execute(f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,60 +32,85 @@ def save_tokenized_to_db(table_name, tokenized_data):
     )
   """)
 
-  # Insert tokenized data
-  for entry in tokenized_data:
-    input_ids_str = ",".join(map(str, entry["input_ids"]))
-    attention_mask_str = ",".join(map(str, entry["attention_mask"]))
-    cursor.execute(f"INSERT INTO {table_name} (input_ids, attention_mask) VALUES (?, ?)", (input_ids_str, attention_mask_str))
+  # Extract input_ids and attention_mask correctly
+  input_ids_list = tokenized_data["input_ids"]
+  attention_mask_list = tokenized_data["attention_mask"]
 
-  conn.commit()
-  conn.close()
+  # Convert tokenized data to SQL format
+  data_to_insert = [
+    (",".join(map(str, input_ids)), ",".join(map(str, attention_mask)))
+    for input_ids, attention_mask in zip(input_ids_list, attention_mask_list)
+  ]
+
+  cursor.executemany(f"INSERT INTO {table_name} (input_ids, attention_mask) VALUES (?, ?)", data_to_insert)
+  connection.commit()
+
   print(f"\r✅ Tokenized data saved to {TOKENIZED_DB_FILE} in table '{table_name}'.    ")
 
-def tokenize_function(examples):
-  """Tokenizes the lyrics."""
-  return tokenizer(examples["text"], truncation=True, padding="max_length", max_length=256)
 
-def process_table(table_name):
-  """Processes a single table: loads, tokenizes, and saves data."""
+def tokenize_function(text_list):
+  """Batch tokenization for efficiency."""
+  return tokenizer(text_list, truncation=True, padding="max_length", max_length=256)
+
+def process_table(lyrics_cursor, tokenized_cursor, table_name, tokenized_conn):
+  """Processes a single table with optimized SQL queries."""
   print(f"\n🔄 Processing {table_name}...")
 
-  # Start spinner
-  global SPINNER_RUNNING
-  SPINNER_RUNNING = True
-  spinner_thread = threading.Thread(target=spinner, daemon=True)
-  spinner_thread.start()
+  spinner = Spinner.get_instance("Scraping lyrics...")
+  spinner.start()
 
-  # Load lyrics from the selected database table
-  dataset = Dataset.from_list(get_lyrics_from_db(table_name))
+  # Load lyrics in one step instead of using a generator
+  lyrics_data = get_lyrics_from_db(lyrics_cursor, table_name)
 
-  # Tokenize dataset
-  tokenized_dataset = dataset.map(tokenize_function, batched=True)
-  tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+  if not lyrics_data:
+    print(f"\n⚠️ No lyrics found in {table_name}. Skipping.")
+    spinner.stop()
+    return
+
+  # Extract text for tokenization
+  lyrics_texts = [row[0] for row in lyrics_data]
+
+  # Tokenize dataset in a batch operation
+  tokenized_dataset = tokenize_function(lyrics_texts)
 
   # Save tokenized dataset to database
-  save_tokenized_to_db(table_name, tokenized_dataset)
+  save_tokenized_to_db(tokenized_cursor, table_name, tokenized_dataset, tokenized_conn)
 
-  # Stop spinner
-  SPINNER_RUNNING = False
-  spinner_thread.join()
-
+  spinner.stop()
   sys.stdout.write(f"\r✅ Done processing {table_name}!    \n")
   sys.stdout.flush()
 
 def main():
   """Main function to process lyrics and save tokenized data."""
-  tables = list_tables()
-  if not tables:
-    print("No tables found in the database. Please check the database file.")
-    return
 
-  print("Available artists:", ", ".join(tables))
-  table_name = input("Enter the artist name (or type 'all' to process everything): ").strip().lower()
+  # Open database connections once and pass them around
+  lyrics_conn = sqlite3.connect(DB_FILE)
+  tokenized_conn = sqlite3.connect(TOKENIZED_DB_FILE)
+  lyrics_cursor = lyrics_conn.cursor()
+  lyrics_cursor.execute("PRAGMA optimize")
+  tokenized_cursor = tokenized_conn.cursor()
+  tokenized_cursor.execute("PRAGMA optimize")
 
-  if table_name == "all": [ process_table(table) for table in tables ]
-  elif table_name in tables: process_table(table_name)
-  else: print("Invalid table name. Make sure you entered it correctly.")
+  try:
+    tables = list_tables(lyrics_cursor)
+    if not tables:
+      print("No tables found in the database. Please check the database file.")
+      return
+
+    print("Available artists:", ", ".join(tables))
+    table_name = input("Enter the artist name (or type 'all' to process everything): ").strip().lower()
+
+    if table_name == "all":
+      for table in tables:
+        process_table(lyrics_cursor, tokenized_cursor, table, tokenized_conn)
+    elif table_name in tables:
+      process_table(lyrics_cursor, tokenized_cursor, table_name, tokenized_conn)
+    else:
+      print("Invalid table name. Make sure you entered it correctly.")
+    
+  finally:
+    lyrics_conn.close()
+    tokenized_conn.close()
 
 if __name__ == "__main__":
   main()

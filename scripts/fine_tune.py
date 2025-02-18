@@ -9,24 +9,13 @@ from datasets import DatasetDict, Dataset
 MODEL_NAME = "models/stablelm_base"
 DB_PATH = "tokenized_lyrics.db"
 
-def list_artists():
-  """Lists available artist tables in the tokenized database."""
-  conn = sqlite3.connect(DB_PATH)
-  cursor = conn.cursor()
-  cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-  artists = [table[0] for table in cursor.fetchall()]
-  conn.close()
-  return artists
+def list_artists(cursor):
+  return [table[0] for table in cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
 
-def load_tokenized_lyrics(db_path, artist_name):
+def load_tokenized_lyrics(cursor, artist_name):
   """Fetches tokenized lyrics for the given artist from the database and parses tensors correctly."""
-  conn = sqlite3.connect(db_path)
-  cursor = conn.cursor()
-
-  query = f"SELECT input_ids FROM {artist_name}"
-  cursor.execute(query)
+  cursor.execute(f"SELECT input_ids FROM {artist_name}")
   rows = cursor.fetchall()
-  conn.close()
 
   if not rows:
     raise ValueError(f"No tokenized lyrics found for artist: {artist_name}")
@@ -46,7 +35,7 @@ def load_tokenized_lyrics(db_path, artist_name):
 
   return Dataset.from_dict({"input_ids": tokenized_texts})
 
-def fine_tune_artist(artist_name):
+def fine_tune_artist(cursor, artist_name):
   """Fine-tunes the model on the selected artist's lyrics."""
   print(f"\n🎤 Starting fine-tuning for artist: {artist_name}...")
 
@@ -58,7 +47,6 @@ def fine_tune_artist(artist_name):
     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     device_map={"": device}  # Explicitly set the device
   )
-
 
   # Apply LoRA for efficient fine-tuning
   lora_config = LoraConfig(
@@ -73,7 +61,7 @@ def fine_tune_artist(artist_name):
   model.print_trainable_parameters()
 
   # Load tokenized dataset
-  dataset = DatasetDict({"train": load_tokenized_lyrics(DB_PATH, artist_name)})
+  dataset = DatasetDict({"train": load_tokenized_lyrics(cursor, artist_name)})
 
   # Training arguments
   save_path = f"models/fine_tuned_{artist_name}"
@@ -110,22 +98,25 @@ def fine_tune_artist(artist_name):
   print(f"✅ Model fine-tuned on {artist_name} and saved to {save_path}.")
 
 def main():
-  """Main function to list artists and fine-tune the model."""
-  artists = list_artists()
-  if not artists:
-    print("No artist datasets found in the database.")
-    return
+  db_conn = sqlite3.connect(DB_PATH)
+  cursor = db_conn.cursor()
+  cursor.execute("PRAGMA optimize")
 
-  print("\nAvailable artists:", ", ".join(artists))
-  artist_name = input("Enter the artist name (or type 'all' to fine-tune on all artists): ").strip().lower()
+  try:
+    artists = list_artists(cursor)
+    if not artists:
+      print("No artist datasets found in the database.")
+      return
 
-  if artist_name == "all":
-    for artist in artists:
-      fine_tune_artist(artist)
-  elif artist_name in artists:
-    fine_tune_artist(artist_name)
-  else:
-    print("Invalid artist name. Please check the list and try again.")
+    print("\nAvailable artists:", ", ".join(artists))
+    artist_name = input("Enter the artist name (or type 'all' to fine-tune on all artists): ").strip().lower()
+
+    if artist_name == "all": [fine_tune_artist(cursor, artist) for artist in artists]
+    elif artist_name in artists: fine_tune_artist(cursor, artist_name)
+    else: print("Invalid artist name. Please check the list and try again.")
+    
+  finally:
+    db_conn.close()  # Ensure the database connection is properly closed
 
 if __name__ == "__main__":
   main()
