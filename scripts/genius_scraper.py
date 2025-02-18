@@ -2,6 +2,7 @@ import requests
 import time
 import re
 import sqlite3
+import multiprocessing
 from transformers import AutoTokenizer
 from bs4 import BeautifulSoup
 from spinner import Spinner
@@ -14,13 +15,19 @@ TOKENIZED_DB_FILE = "tokenized_lyrics.db"
 GENIUS_API_URL = "https://api.genius.com"
 EXCLUDED_KEYWORDS = ["Live at", "Remix", "Mixed", "Version", "Alternate", "Demo", "Re-Recorded", "Acoustic", "Duplicate"]
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-logger = Logger()
-
 with open("Genius_Api_Token", "r", encoding="utf-8") as token_file:
   GENIUS_API_TOKEN = token_file.read().strip()
+  HEADERS = {"Authorization": f"Bearer {GENIUS_API_TOKEN}"}
 
-HEADERS = {"Authorization": f"Bearer {GENIUS_API_TOKEN}"}
+logger = Logger()
+
+def load_tokenizer():
+  return AutoTokenizer.from_pretrained(MODEL_NAME)
+
+def tokenize_lyrics(lyrics, queue):
+  tokenizer = load_tokenizer()
+  tokenized_data = tokenizer([lyrics], truncation=True, padding="max_length", max_length=256)
+  queue.put(tokenized_data)
 
 def get_db_connection(db_file):
   return sqlite3.connect(db_file)
@@ -81,7 +88,6 @@ def save_lyrics_and_tokenized(cursor_lyrics, cursor_tokens, artist, song_title, 
   cursor_tokens.executemany(f"INSERT INTO {token_table_name} (input_ids, attention_mask) VALUES (?, ?)", data_to_insert)
 
 def scrape_lyrics(song_url, artist_name):
-  """Scrape lyrics from Genius and extract only the artist’s verses if featured."""
   session = requests.Session()
   response = session.get(song_url, headers=HEADERS, allow_redirects=True)
   soup = BeautifulSoup(response.text, "html.parser")
@@ -111,9 +117,6 @@ def scrape_lyrics(song_url, artist_name):
   logger.warning(f"No specific verses found for {artist_name} in {song_url}")
   return None
 
-def tokenize_lyrics(lyrics):
-  return tokenizer([lyrics], truncation=True, padding="max_length", max_length=256)
-
 def main(artist_name, max_songs=None):
   artist_id, redirected_name = get_artist_id(artist_name)
   if not artist_id: return
@@ -133,11 +136,14 @@ def main(artist_name, max_songs=None):
     logger.info(f"Scraping: {song_title}")
     lyrics = scrape_lyrics(song_url, redirected_name)
     if lyrics:
-      tokenized_data = tokenize_lyrics(lyrics)
+      queue = multiprocessing.Queue()
+      tokenizing_process = multiprocessing.Process(target=tokenize_lyrics, args=(lyrics, queue))
+      tokenizing_process.start()
+      tokenizing_process.join()
+      tokenized_data = queue.get()
       save_lyrics_and_tokenized(cursor_lyrics, cursor_tokens, redirected_name, song_title, lyrics, tokenized_data)
       song_count += 1
-      
-    time.sleep(0.5)
+    
   spinner.stop()
   conn_lyrics.commit()
   conn_tokens.commit()
