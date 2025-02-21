@@ -1,0 +1,14 @@
+flask
+torch
+transformers
+requests
+beautifulsoup4
+datasets
+peft
+tokenizers
+tokenmonster
+tqdm
+numpy
+scipy
+pandas
+pyyaml

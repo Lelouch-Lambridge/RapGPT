@@ -10,8 +10,8 @@ from logger import Logger
 
 # Configuration
 MODEL_NAME = "models/stablelm_base"
-DB_FILE = "lyrics.db"
-TOKENIZED_DB_FILE = "tokenized_lyrics.db"
+DB_FILE = "databases/lyrics.db"
+TOKENIZED_DB_FILE = "databases/tokenized_lyrics.db"
 GENIUS_API_URL = "https://api.genius.com"
 EXCLUDED_KEYWORDS = ["Live at", "Remix", "Mixed", "Version", "Alternate", "Demo", "Re-Recorded", "Acoustic", "Duplicate"]
 

@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  rapgpt:
+    build: .
+    ports:
+      - "5001:5000"
+    volumes:
+      - .:/app  # Ensures the entire project is copied
+    environment:
+      - FLASK_ENV=development
+    command: ["python", "server.py"]

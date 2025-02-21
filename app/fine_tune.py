@@ -9,7 +9,8 @@ from logger import Logger
 from spinner import Spinner
 
 MODEL_NAME = "models/stablelm_base"
-DB_PATH = "tokenized_lyrics.db"
+TOKENIZED_DB_FILE = "databases/tokenized_lyrics.db"
+
 
 logger = Logger()
 

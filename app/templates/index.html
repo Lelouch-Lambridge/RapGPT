@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RapGPT UI</title>
+  <script>
+    async function postData(endpoint, data) {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+      });
+      const result = await response.json();
+      alert(result.message || result.error);
+    }
+  </script>
+</head>
+<body>
+  <h1>RapGPT</h1>
+  <button onclick="postData('/download_model', {})">Download Model</button>
+  <br><br>
+  <input type="text" id="artist_name" placeholder="Artist Name">
+  <button onclick="postData('/scrape_lyrics', {artist_name: document.getElementById('artist_name').value})">Scrape Lyrics</button>
+  <br><br>
+  <input type="text" id="fine_tune_artist" placeholder="Fine-tune Artist">
+  <button onclick="postData('/fine_tune', {artist_name: document.getElementById('fine_tune_artist').value})">Fine-tune Model</button>
+  <br><br>
+  <input type="text" id="model_name" placeholder="Model Name">
+  <input type="text" id="prompt" placeholder="Prompt">
+  <button onclick="postData('/generate_lyrics', {selected_model: document.getElementById('model_name').value, prompt: document.getElementById('prompt').value})">Generate Lyrics</button>
+</body>
+</html>
